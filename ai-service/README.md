@@ -1,10 +1,35 @@
 # AI Service — Tool-84 Dark Mode UI Theme
 
 ## Overview
-Flask microservice running on port 5000. Uses Groq LLaMA-3.3-70b for AI-powered dark mode theme analysis. Includes Redis caching (15 min TTL) and security headers.
+Flask microservice on **port 5000**. Uses Groq LLaMA-3.3-70b for AI-powered dark mode theme analysis.
+Features: Redis caching, ChromaDB domain knowledge, input sanitisation, rate limiting, security headers.
+
+## Architecture
+```
+  Java Backend (8080) ──► Flask AI Service (5000)
+                               │
+                    ┌──────────┼──────────┐
+                    │          │          │
+               /describe  /recommend  /generate-report
+               /health
+                    │
+              ┌─────┴──────┐
+          Groq API      Redis Cache
+        (LLaMA-3.3)    (15 min TTL)
+                    │
+               ChromaDB
+            (10 domain docs)
+```
 
 ## Tech Stack
-- Python 3.11, Flask 3.x, Groq API (LLaMA-3.3-70b), Redis, flask-limiter
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Python | 3.11 | Language |
+| Flask | 3.1.0 | Web framework |
+| Groq API | LLaMA-3.3-70b | AI model |
+| Redis | 7 | Response cache (15 min TTL) |
+| ChromaDB | 0.4.24 | Domain knowledge |
+| flask-limiter | 3.5.0 | Rate limiting (30 req/min) |
 
 ## Folder Structure
 ```
@@ -14,45 +39,53 @@ ai-service/
 │   ├── recommend_prompt.txt
 │   └── generate_report_prompt.txt
 ├── routes/
-│   ├── describe.py
-│   ├── recommend.py
-│   ├── generate_report.py
-│   └── health.py
+│   ├── describe.py           Day 3
+│   ├── recommend.py          Day 4
+│   ├── generate_report.py    Day 6
+│   └── health.py             Day 7
 ├── services/
-│   ├── groq_client.py
-│   └── cache.py
+│   ├── groq_client.py        Day 2 — retry, cache, sanitise
+│   ├── cache.py              Day 7 — Redis SHA256
+│   └── chroma_client.py      Day 11/12 — ChromaDB
+├── tests/
+│   └── test_endpoints.py     Day 8 — 8 pytest tests
 ├── app.py
+├── Dockerfile                Day 13
 ├── requirements.txt
-└── .env
+├── .env.example
+├── SECURITY.md
+└── README.md
 ```
 
 ## Prerequisites
 - Python 3.11+
-- Redis running on localhost:6379
-- Groq API key from https://console.groq.com
+- Redis on localhost:6379 (optional — app works without it)
+- Groq API key from https://console.groq.com (free)
 
 ## Setup
-
 ```bash
 cd ai-service
 pip install -r requirements.txt
-cp .env.example .env        # then fill in your GROQ_API_KEY
+cp .env.example .env        # fill in GROQ_API_KEY
 python app.py
 ```
 
 ## Environment Variables
+| Variable | Description | Required |
+|----------|-------------|----------|
+| GROQ_API_KEY | Groq API key from console.groq.com | ✅ Yes |
+| REDIS_URL | Redis URL | No (defaults to redis://localhost:6379) |
+| CHROMA_DATA_PATH | ChromaDB storage path | No (defaults to ./chroma_data) |
 
-| Variable      | Description                              | Default                    |
-|---------------|------------------------------------------|----------------------------|
-| GROQ_API_KEY  | Your Groq API key from console.groq.com  | required                   |
-| REDIS_URL     | Redis connection URL                     | redis://localhost:6379     |
+## Docker
+```bash
+docker build -t ai-service .
+docker run -p 5000:5000 --env-file .env ai-service
+```
 
 ## API Reference
 
 ### GET /health
-Returns service status, model info, and uptime.
-
-**Response:**
 ```json
 {
   "status": "ok",
@@ -63,66 +96,53 @@ Returns service status, model info, and uptime.
 ```
 
 ### POST /describe
-Generates a structured description for a dark mode UI theme.
-
-**Body:**
-```json
-{ "name": "Midnight Blue", "details": "Dark sidebar with neon accents" }
-```
+**Request:** `{ "name": "Midnight Blue", "details": "Dark sidebar with neon accents" }`
 
 **Response:**
 ```json
 {
-  "description": "A sleek dark mode theme...",
+  "description": "Midnight Blue is a sleek dark mode theme...",
   "tags": ["dark", "neon", "sidebar"],
   "generated_at": "2026-04-21T10:00:00+00:00"
 }
 ```
 
 ### POST /recommend
-Returns 3 actionable UI/UX recommendations.
-
-**Body:**
-```json
-{ "input_text": "Dark sidebar with blue accents and poor contrast" }
-```
+**Request:** `{ "input_text": "Dark sidebar with poor contrast" }`
 
 **Response:**
 ```json
 [
-  {"action_type": "color", "description": "...", "priority": "high"},
-  {"action_type": "typography", "description": "...", "priority": "medium"},
-  {"action_type": "spacing", "description": "...", "priority": "low"}
+  {"action_type": "color", "description": "Increase contrast to 4.5:1", "priority": "high"},
+  {"action_type": "typography", "description": "Increase font to 16px", "priority": "medium"},
+  {"action_type": "spacing", "description": "Apply 8px grid", "priority": "low"}
 ]
 ```
 
 ### POST /generate-report
-Generates a full structured AI report.
-
-**Body:**
-```json
-{ "input_text": "Dark sidebar with #1a1a2e background and neon blue accents" }
-```
+**Request:** `{ "input_text": "Dark sidebar with #1a1a2e background" }`
 
 **Response:**
 ```json
 {
-  "title": "Dark Mode Theme Analysis Report",
-  "summary": "A concise one-sentence summary",
-  "overview": "2-3 sentence overview...",
-  "key_items": ["insight 1", "insight 2", "insight 3"],
+  "title": "Dark Mode Theme Analysis",
+  "summary": "A modern dark theme with strong visual hierarchy",
+  "overview": "This theme uses deep navy backgrounds...",
+  "key_items": ["High contrast", "Neon accents", "Clean layout"],
   "recommendations": [...],
   "generated_at": "2026-04-21T10:00:00+00:00"
 }
 ```
 
 ## Fallback Behaviour
-All endpoints return `{ "is_fallback": true }` with safe defaults if Groq is unavailable — the service never returns HTTP 500 due to AI failure.
+All endpoints return `{ "is_fallback": true }` with safe defaults if Groq is unavailable.
+**The service never returns HTTP 500 due to AI failure.**
 
-## Security Headers (Day 8)
-All responses include:
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `X-XSS-Protection: 1; mode=block`
-- `Strict-Transport-Security`
-- `Content-Security-Policy`
+## Running Tests
+```bash
+pytest tests/ -v
+```
+All 8 tests run without live network — Groq API is fully mocked.
+
+## Security
+See [SECURITY.md](./SECURITY.md) for full threat model, test results, and sign-off.

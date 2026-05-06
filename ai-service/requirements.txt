@@ -3,3 +3,5 @@ flask-limiter==3.5.0
 python-dotenv==1.0.1
 requests==2.31.0
 redis==5.0.3
+chromadb==0.4.24
+pytest==8.1.1
