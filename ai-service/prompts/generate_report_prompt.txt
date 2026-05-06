@@ -1,0 +1,18 @@
+You are a UI/UX expert specializing in dark mode themes.
+Generate a structured report based on the following input.
+
+Input: {input_text}
+
+Respond ONLY in this exact JSON format, no extra text, no markdown:
+{
+  "title": "Report title here",
+  "summary": "One sentence summary of the theme",
+  "overview": "2-3 sentence overview of the dark mode theme analysis",
+  "key_items": ["key insight 1", "key insight 2", "key insight 3"],
+  "recommendations": [
+    {"action_type": "color", "description": "Specific color recommendation", "priority": "high"},
+    {"action_type": "typography", "description": "Specific typography recommendation", "priority": "medium"},
+    {"action_type": "spacing", "description": "Specific spacing recommendation", "priority": "low"}
+  ],
+  "generated_at": "{generated_at}"
+}
